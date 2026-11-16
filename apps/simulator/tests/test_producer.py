@@ -1,5 +1,5 @@
 import pytest
-from aegis_simulator import create_incident_event,PaymentGatewayTimeoutScenario
+from aegis_simulator import create_incident_event,PaymentGatewayTimeoutScenario,is_retryable_status,calculate_retry_delay
 from aegis_contracts import IncidentSeverity,IncidentEvent
 import uuid
 
@@ -64,3 +64,36 @@ def test_payment_gateway_timeout_scenario():
     assert scenario.source == "checkout-service"
     assert scenario.title == "Payment gateway timeout"
     assert scenario.description == "Payment requests exceeded the configured gateway timeout."
+
+
+@pytest.mark.parametrize(
+    "status_code, expected",
+    [
+        (200, False),
+        (422, False),
+        (429, True),
+        (500, True),
+        (503, True),
+    ],
+)
+def test_is_retryable_status(status_code, expected):
+    assert is_retryable_status(status_code) is expected
+
+
+@pytest.mark.parametrize(
+    "retries, expected_delay",
+    [
+        (0, 0.5),
+        (1, 1.0),
+        (2, 2.0),
+        (3, 4.0),
+        (4, 8.0),
+        (5, 16.0),
+    ],
+)
+def test_calculate_retry_delay(retries, expected_delay):
+    assert calculate_retry_delay(retries) == expected_delay
+
+def test_calculate_retry_delay_negative_retries():
+    with pytest.raises(ValueError):
+        calculate_retry_delay(-1)
