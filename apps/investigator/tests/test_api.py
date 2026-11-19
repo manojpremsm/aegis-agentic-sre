@@ -281,3 +281,90 @@ def test_event_survives_application_restart(tmp_path, monkeypatch):
         assert stored_events[0].severity == event.severity
         assert stored_events[0].title == event.title
         assert stored_events[0].description == event.description
+
+def test_get_incident_events_returns_matching_events(
+    tmp_path,
+    monkeypatch,
+):
+    incident_id =uuid4()
+    db_path = tmp_path/"test_db.db"
+    monkeypatch.setattr(api,"db_path",str(db_path))
+    event1 = create_incident_event(incident_id=incident_id,severity=IncidentSeverity.WARNING,source="test_source",title="getting matching events",description="check whether get route is working")
+    event2 = create_incident_event(incident_id=incident_id,severity=IncidentSeverity.WARNING,source="test_source",title="getting  events",description="check whether it is working")
+    event3 = create_incident_event(incident_id=uuid4(),severity=IncidentSeverity.WARNING,source="test_source",title="getting  events",description="check whether it is working")
+    with TestClient(api.app) as client:
+        response1 = client.post("/v1/events/",json=event1.model_dump(mode="json"))
+        response2 = client.post("/v1/events/",json=event2.model_dump(mode="json"))
+        response3 = client.post("/v1/events/",json=event3.model_dump(mode="json"))
+        assert response1.status_code == 200
+        assert response2.status_code == 200
+        assert response3.status_code == 200
+        response = client.get(f"/v1/incidents/{incident_id}/events")
+        assert response.status_code == 200
+        returned_events = response.json()
+        assert len(returned_events) == 2
+        returned_event_ids = {
+        event["event_id"] for event in returned_events
+        }
+        expected_event_ids = {
+        str(event1.event_id),
+        str(event2.event_id),
+        }
+        assert returned_event_ids == expected_event_ids
+
+def test_get_incident_events_returns_empty_list(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path /"test.db"
+    monkeypatch.setattr(api,"db_path",str(db_path))
+    incident_id = uuid4()
+    with TestClient(api.app) as client:
+
+        response = client.get(f"/v1/incidents/{incident_id}/events")
+        assert response.status_code == 200
+        assert response.json() == []
+
+def test_get_incident_events_rejects_invalid_uuid(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path /"test.db"
+    monkeypatch.setattr(api,"db_path",str(db_path))
+    incident_id = 12367
+    with TestClient(api.app) as client:
+
+        response = client.get(f"/v1/incidents/{incident_id}/events")
+        assert response.status_code == 422
+
+def test_get_incident_events_returns_503_when_database_fails(
+    tmp_path,
+    monkeypatch,
+):
+    # Arrange
+    db_path = tmp_path / "test.db"
+    monkeypatch.setattr(api, "db_path", str(db_path))
+
+    incident_id = uuid4()
+
+    # Simulate a SQLite database failure
+    def failing_get_events(db_path, incident_id):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(
+        api,
+        "get_events_by_incident_id",
+        failing_get_events,
+    )
+
+    # Act
+    with TestClient(api.app, raise_server_exceptions=False) as client:
+        response = client.get(
+            f"/v1/incidents/{incident_id}/events"
+        )
+
+    # Assert
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Event storage temporarily unavailable"
+    )
