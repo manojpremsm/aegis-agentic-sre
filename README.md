@@ -34,4 +34,4 @@ The simulator and investigator are designed as independently deployable applicat
 
 The planned architecture uses asynchronous messaging to decouple incident generation from investigation processing. Durable workflow state, idempotent event handling, and retry mechanisms will support reliable incident processing.
 
-**Current implementation status:** The repository structure and Python packaging are initialized. Incident simulation, messaging, investigation workflows, and AI agents are not yet implemented.
+
