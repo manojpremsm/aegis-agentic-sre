@@ -2,6 +2,7 @@ import os
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
+from aegis_investigator import IncidentSummary,aggregate_events
 
 from fastapi import FastAPI, HTTPException
 
@@ -51,6 +52,17 @@ def receive_event(event_data: IncidentEvent):
 def get_incident_events(incident_id: uuid.UUID):
     try:
         return get_events_by_incident_id(db_path,incident_id)
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Event storage temporarily unavailable",
+        ) from exc
+
+@app.get("/v1/incidents/{incident_id}/summary",response_model = IncidentSummary)
+def get_incident_summary(incident_id:uuid.UUID):
+    try:
+        events = get_events_by_incident_id(db_path,incident_id)
+        return aggregate_events(incident_id=incident_id,events=events)
     except sqlite3.OperationalError as exc:
         raise HTTPException(
             status_code=503,
