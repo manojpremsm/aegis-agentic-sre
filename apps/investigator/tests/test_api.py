@@ -368,3 +368,141 @@ def test_get_incident_events_returns_503_when_database_fails(
     assert response.json()["detail"] == (
         "Event storage temporarily unavailable"
     )
+
+def test_get_incident_summary_returns_aggregated_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    # Arrange: isolate this test from the real database
+    test_db_path = tmp_path / "test_summary.db"
+    monkeypatch.setattr(api, "db_path", str(test_db_path))
+
+    incident_id = uuid4()
+
+    event1 = create_incident_event(
+        incident_id=incident_id,
+        severity=IncidentSeverity.WARNING,
+        source="checkout-service",
+        title="High checkout latency",
+    )
+
+    event2 = create_incident_event(
+        incident_id=incident_id,
+        severity=IncidentSeverity.CRITICAL,
+        source="payment-service",
+        title="Payment failures",
+    )
+
+    event3 = create_incident_event(
+        incident_id=incident_id,
+        severity=IncidentSeverity.WARNING,
+        source="checkout-service",
+        title="Checkout latency increasing",
+    )
+
+    events = [event1, event2, event3]
+
+    with TestClient(api.app) as client:
+
+        # Act: persist the events through the ingestion API
+        for event in events:
+            response = client.post(
+                "/v1/events",
+                json=event.model_dump(mode="json"),
+            )
+            assert response.status_code == 200
+
+        # Act: retrieve the aggregated incident summary
+        response = client.get(
+            f"/v1/incidents/{incident_id}/summary"
+        )
+
+    # Assert: verify the summary response
+    assert response.status_code == 200
+
+    summary = response.json()
+
+    assert summary["incident_id"] == str(incident_id)
+    assert summary["total_events"] == 3
+
+    assert summary["severity_counts"] == {
+        "INFO": 0,
+        "WARNING": 2,
+        "CRITICAL": 1,
+    }
+
+    assert summary["sources"] == [
+        "checkout-service",
+        "payment-service",
+    ]
+
+def test_get_incident_summary_returns_empty_summary(
+    tmp_path,
+    monkeypatch,
+):
+    incident_id = uuid4()
+    events = []
+    db_path = tmp_path/"test.db"
+    monkeypatch.setattr(api,"db_path",db_path)
+    with TestClient(api.app) as client:
+        for event in events:
+            response = client.post(
+                            "/v1/events",
+                            json=event.model_dump(mode="json"),
+                        )
+            assert response.status_code == 200
+            # Act: retrieve the aggregated incident summary
+            response = client.get(
+                f"/v1/incidents/{incident_id}/summary"
+            )
+            summary = response.json()
+            assert response.status_code == 200
+            assert summary["total_events"] == 0
+            assert summary["severity_counts"] == {
+                "INFO": 0,
+                "WARNING": 0,
+                "CRITICAL": 0,
+            }
+            assert summary["sources"] == []
+
+def test_get_incident_summary_rejects_invalid_uuid(
+    tmp_path,
+    monkeypatch,
+):
+    test_db_path = tmp_path / "test_summary.db"
+    monkeypatch.setattr(api, "db_path", str(test_db_path))
+
+    with TestClient(api.app) as client:
+        response = client.get(
+            "/v1/incidents/not-a-valid-uuid/summary"
+        )
+
+    assert response.status_code == 422
+
+def test_get_incident_summary_returns_503_when_database_fails(
+    tmp_path,
+    monkeypatch,
+):
+    test_db_path = tmp_path / "test_summary.db"
+    monkeypatch.setattr(api, "db_path", str(test_db_path))
+
+    incident_id = uuid4()
+
+    def failing_get_events(db_path, incident_id):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(
+        api,
+        "get_events_by_incident_id",
+        failing_get_events,
+    )
+
+    with TestClient(api.app, raise_server_exceptions=False) as client:
+        response = client.get(
+            f"/v1/incidents/{incident_id}/summary"
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Event storage temporarily unavailable"
+    }
