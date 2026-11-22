@@ -1,5 +1,5 @@
-from aegis_contracts import IncidentSeverity,IncidentEvent
-from aegis_investigator import IncidentSummary
+from aegis_contracts import IncidentSeverity,IncidentEvent,IncidentSummary
+
 import uuid
 
 
