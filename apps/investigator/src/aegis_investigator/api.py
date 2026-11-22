@@ -2,8 +2,8 @@ import os
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
-from aegis_investigator import IncidentSummary,aggregate_events
-
+from aegis_investigator import aggregate_events
+from aegis_contracts import IncidentSummary
 from fastapi import FastAPI, HTTPException
 
 from aegis_contracts import IncidentEvent
