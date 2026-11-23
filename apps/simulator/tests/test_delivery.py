@@ -1,7 +1,8 @@
 
 from unittest.mock import Mock, patch
 from uuid import uuid4
-
+import pytest
+import httpx
 from aegis_contracts import IncidentSeverity
 from aegis_simulator import create_incident_event
 from aegis_simulator import send_incident_event
@@ -55,10 +56,6 @@ def test_retry_after_503_then_success():
 
         assert first_payload == second_payload
         assert first_payload == event.model_dump_json()
-
-
-import pytest
-import httpx
 
 
 def test_non_retryable_422_stops_immediately():
