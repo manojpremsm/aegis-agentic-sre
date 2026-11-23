@@ -2,6 +2,7 @@ from aegis_orchestrator import (
     InvestigationResult,
     InvestigationStatus,
     investigate_incident,
+    RiskLevel
 )
 import pytest
 import uuid
@@ -92,4 +93,74 @@ def test_investigate_incident_returns_failed_on_timeout():
     assert result.incident_id == incident_id
     assert result.status == InvestigationStatus.FAILED
     assert result.summary is None
+    assert result.error == "Investigator service unavailable"
+
+
+
+def test_investigation_includes_severity_assessment():
+    incident_id = uuid.uuid4()
+
+    summary_data = {
+        "incident_id": str(incident_id),
+        "total_events": 3,
+        "severity_counts": {
+            "INFO": 1,
+            "WARNING": 1,
+            "CRITICAL": 1,
+        },
+        "sources": ["checkout-service", "payment-service"],
+    }
+
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == (
+            f"/v1/incidents/{incident_id}/summary"
+        )
+        return httpx.Response(200, json=summary_data)
+
+    transport = httpx.MockTransport(mock_handler)
+
+    with httpx.Client(transport=transport) as client:
+        result = investigate_incident(
+            incident_id=incident_id,
+            base_url="http://investigator",
+            client=client,
+        )
+
+    assert result.incident_id == incident_id
+    assert result.status == InvestigationStatus.COMPLETED
+
+    assert result.summary is not None
+    assert result.summary.total_events == 3
+
+    assert result.severity_assessment is not None
+    assert result.severity_assessment.risk_level == RiskLevel.HIGH
+    assert result.severity_assessment.requires_immediate_attention is True
+    assert result.severity_assessment.incident_id == incident_id
+    assert result.severity_assessment.reason.strip()
+    assert result.error is None
+
+
+def test_investigation_failure_has_no_severity_assessment():
+    incident_id = uuid.uuid4()
+
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503,
+            json={"detail": "Service unavailable"},
+        )
+
+    transport = httpx.MockTransport(mock_handler)
+
+    with httpx.Client(transport=transport) as client:
+        result = investigate_incident(
+            incident_id=incident_id,
+            base_url="http://investigator",
+            client=client,
+        )
+
+    assert result.incident_id == incident_id
+    assert result.status == InvestigationStatus.FAILED
+    assert result.summary is None
+    assert result.severity_assessment is None
     assert result.error == "Investigator service unavailable"
