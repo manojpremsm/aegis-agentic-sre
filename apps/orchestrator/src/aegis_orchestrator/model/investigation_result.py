@@ -2,7 +2,7 @@ from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel
-from aegis_contracts import IncidentSummary
+from aegis_contracts import IncidentSummary,IncidentEvent
 from aegis_orchestrator import SeverityAssessment
 
 
@@ -18,4 +18,5 @@ class InvestigationResult(BaseModel):
     status: InvestigationStatus
     summary: IncidentSummary | None = None
     severity_assessment: SeverityAssessment | None = None
+    events: list[IncidentEvent] | None = None
     error: str | None = None

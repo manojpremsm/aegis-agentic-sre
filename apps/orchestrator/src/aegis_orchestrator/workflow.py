@@ -3,6 +3,7 @@ from aegis_orchestrator import (
     InvestigationResult,
     fetch_incident_summary,
     SeverityAssessment,
+    fetch_incident_events
 
 )
 from aegis_orchestrator.agents.severity_agent import analyze_severity
@@ -17,12 +18,14 @@ def investigate_incident(
 ) -> InvestigationResult:
     try:
         summary = fetch_incident_summary(incident_id, base_url, client)
+        events = fetch_incident_events(incident_id=incident_id,base_url=base_url,client=client)
         assessment = analyze_severity(summary=summary)
         return InvestigationResult(
             incident_id=(incident_id),
             status=InvestigationStatus.COMPLETED,
             summary=summary,
             severity_assessment = assessment,
+            events=events,
             error=None,
         )
     except httpx.HTTPError:
@@ -31,5 +34,6 @@ def investigate_incident(
             status=InvestigationStatus.FAILED,
             summary=None,
             severity_assessment = None,
+            event = None,
             error="Investigator service unavailable",
         )
